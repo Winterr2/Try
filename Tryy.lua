@@ -3,7 +3,7 @@ local userInputService = game:GetService("UserInputService")
 local localPlayer = players.LocalPlayer
 local camera = game.Workspace.CurrentCamera 
 local starterGui = game:GetService("StarterGui")
-local coreGui = game:GetService("CoreGui") -- Added to cleanly host the UI safely
+local coreGui = game:GetService("CoreGui")
 
 -- Toggle state variables
 local scriptEnabled = true
@@ -62,14 +62,66 @@ screenGui.Name = "TeleportToggleGui"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = coreGui
 
--- Main Frame (The Floating Panel)
+-- Main Frame (The Floating Panel) - Height adjusted to 75 to fit the title
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
-mainFrame.Size = UDim2.new(0, 160, 0, 45)
-mainFrame.Position = UDim2.new(0.05, 0, 0.2, 0) -- Top-left default area
+mainFrame.Size = UDim2.new(0, 160, 0, 75)
+mainFrame.Position = UDim2.new(0.05, 0, 0.2, 0)
 mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 mainFrame.BorderSizePixel = 0
 mainFrame.Active = true
+mainFrame.Draggable = true 
+mainFrame.Parent = screenGui
+
+-- UI Corner for styling
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0, 8)
+mainCorner.Parent = mainFrame
+
+-- Title Text (Winter)
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Name = "TitleLabel"
+titleLabel.Size = UDim2.new(1, 0, 0, 25)
+titleLabel.Position = UDim2.new(0, 0, 0, 4)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "Winter"
+titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleLabel.Font = Enum.Font.SourceSansBold
+titleLabel.TextSize = 16
+titleLabel.Parent = mainFrame
+
+-- Toggle Button - Shifted down to accommodate the title text
+local toggleButton = Instance.new("TextButton")
+toggleButton.Name = "ToggleButton"
+toggleButton.Size = UDim2.new(1, -14, 0, 35)
+toggleButton.Position = UDim2.new(0, 7, 0, 33)
+toggleButton.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
+toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleButton.Font = Enum.Font.SourceSansBold
+toggleButton.TextSize = 14
+toggleButton.Text = "Teleport: ON"
+toggleButton.BorderSizePixel = 0
+toggleButton.Parent = mainFrame
+
+local buttonCorner = Instance.new("UICorner")
+buttonCorner.CornerRadius = UDim.new(0, 6)
+buttonCorner.Parent = toggleButton
+
+-- Toggle Logic Functionality
+toggleButton.MouseButton1Click:Connect(function()
+    scriptEnabled = not scriptEnabled
+    if scriptEnabled then
+        toggleButton.Text = "Teleport: ON"
+        toggleButton.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
+        showNotification("Teleport Script", "Teleport feature has been enabled.")
+    else
+        toggleButton.Text = "Teleport: OFF"
+        toggleButton.BackgroundColor3 = Color3.fromRGB(231, 76, 60)
+        showNotification("Teleport Script", "Teleport feature has been disabled.")
+    end
+end)
+
+showNotification("Script Active", "Teleport script has been activated.")
 mainFrame.Draggable = true -- Allows you to hold and drag the panel anywhere on your screen
 mainFrame.Parent = screenGui
 
