@@ -124,68 +124,100 @@ end
 -- TELEPORT
 --==================================================
 
-local function teleportToScreenPosition(position)
+addConnection(
+    UserInputService.InputBegan:Connect(
+        function(input, gameProcessed)
 
-    if not teleportEnabled then
-        return
-    end
+            -- Teleport must be enabled
+            if not teleportEnabled then
+                return
+            end
 
-    if isRecording or isPlaying then
-        return
-    end
+            -- Don't teleport while recording/playing
+            if isRecording or isPlaying then
+                return
+            end
 
-    local character = LocalPlayer.Character
+            -- Only respond to left mouse click
+            if input.UserInputType ~=
+                Enum.UserInputType.MouseButton1 then
+                return
+            end
 
-    if not character then
-        return
-    end
+            -- Don't teleport when clicking Winter Hub itself
+            if gameProcessed then
+                return
+            end
 
-    local root = character:FindFirstChild("HumanoidRootPart")
+            local character =
+                LocalPlayer.Character
 
-    if not root then
-        return
-    end
+            if not character then
+                return
+            end
 
-    Camera = workspace.CurrentCamera
+            local root =
+                character:FindFirstChild(
+                    "HumanoidRootPart"
+                )
 
-    if not Camera then
-        return
-    end
+            if not root then
+                return
+            end
 
-    local ray = Camera:ScreenPointToRay(
-        position.X,
-        position.Y
+            Camera =
+                workspace.CurrentCamera
+
+            if not Camera then
+                return
+            end
+
+            -- Get mouse position
+            local mousePosition =
+                UserInputService:GetMouseLocation()
+
+            -- Convert mouse position into a ray
+            local ray =
+                Camera:ViewportPointToRay(
+                    mousePosition.X,
+                    mousePosition.Y
+                )
+
+            local raycastParams =
+                RaycastParams.new()
+
+            raycastParams.FilterType =
+                Enum.RaycastFilterType.Exclude
+
+            raycastParams.FilterDescendantsInstances = {
+                character
+            }
+
+            -- Find the surface we're clicking
+            local result =
+                workspace:Raycast(
+                    ray.Origin,
+                    ray.Direction * 2000,
+                    raycastParams
+                )
+
+            if result then
+
+                local targetPosition =
+                    result.Position
+
+                -- Move slightly above the surface
+                root.CFrame =
+                    CFrame.new(
+                        targetPosition +
+                        Vector3.new(0, 3, 0)
+                    )
+
+            end
+
+        end
     )
-
-    local params = RaycastParams.new()
-
-    params.FilterType =
-        Enum.RaycastFilterType.Exclude
-
-    params.FilterDescendantsInstances = {
-        character
-    }
-
-    local result = workspace:Raycast(
-        ray.Origin,
-        ray.Direction * 2000,
-        params
-    )
-
-    if result then
-
-        local targetPosition =
-            result.Position
-
-        root.CFrame =
-            CFrame.new(
-                targetPosition +
-                Vector3.new(0, 3, 0)
-            )
-
-    end
-end
-
+)
 --==================================================
 -- PERFORMANCE MODE
 --==================================================
