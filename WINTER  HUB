@@ -1,0 +1,255 @@
+local players = game:GetService("Players")
+local userInputService = game:GetService("UserInputService")
+local runService = game:GetService("RunService")
+local lighting = game:GetService("Lighting")
+local soundService = game:GetService("SoundService")
+local starterGui = game:GetService("StarterGui")
+local coreGui = game:GetService("CoreGui")
+
+local localPlayer = players.LocalPlayer
+local camera = game.Workspace.CurrentCamera
+
+-- Global Feature Toggle States
+local afkFpsEnabled = false
+local teleportEnabled = true
+
+-- Save Initial Native Configuration Data
+local originalQuality = settings().Rendering.QualityLevel
+local originalShadows = lighting.GlobalShadows
+
+local function showNotification(title, text)
+    starterGui:SetCore("SendNotification", {
+        Title = title,
+        Text = text,
+        Duration = 4
+    })
+end
+
+-- ==========================================
+-- ANTI-AFK IDLE KICK BYPASS MECHANISM
+-- ==========================================
+local virtualUser = game:GetService("VirtualUser")
+localPlayer.Idled:Connect(function()
+    if afkFpsEnabled then
+        virtualUser:Button2Down(Vector2.new(0, 0), camera.CFrame)
+        task.wait(1)
+        virtualUser:Button2Up(Vector2.new(0, 0), camera.CFrame)
+    end
+end)
+
+-- ==========================================
+-- TELEPORT INTERACTION CODE
+-- ==========================================
+local function teleportPlayerToTouchPosition(touchPosition)
+    if not teleportEnabled then return end
+
+    if localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        local ray = camera:ScreenPointToRay(touchPosition.X, touchPosition.Y)
+        local raycastParams = RaycastParams.new()
+        raycastParams.FilterDescendantsInstances = {localPlayer.Character}
+        raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+        
+        local raycastResult = workspace:Raycast(ray.Origin, ray.Direction * 1000, raycastParams)
+        if raycastResult then
+            local newPosition = raycastResult.Position
+            localPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(newPosition + Vector3.new(0, 3, 0))
+        end
+    end
+end
+
+userInputService.InputBegan:Connect(function(input, gameProcessedEvent)
+    if gameProcessedEvent then return end
+    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        teleportPlayerToTouchPosition(input.Position)
+    end
+end)
+
+-- ==========================================
+-- ASSET CLEANING PIPELINE LOOP
+-- ==========================================
+local function sweepLagObjects()
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("Texture") or obj:IsA("Decal") or obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Explosion") or obj:IsA("Shirt") or obj:IsA("Pants") then
+            obj:Destroy()
+        elseif obj:IsA("BasePart") then
+            obj.Material = Enum.Material.SmoothPlastic
+            obj.Reflectance = 0
+            obj.CastShadow = false
+        elseif obj:IsA("MeshPart") then
+            obj.RenderFidelity = Enum.RenderFidelity.Performance
+        end
+    end
+    for _, sound in ipairs(soundService:GetDescendants()) do
+        if sound:IsA("Sound") then sound.Volume = 0 end
+    end
+    gcinfo()
+    collectgarbage("collect")
+end
+
+task.spawn(function()
+    while true do
+        if afkFpsEnabled then
+            sweepLagObjects()
+        end
+        task.wait(12)
+    end
+end)
+
+-- ==========================================
+-- UNIFIED HUB GRAPHICAL INTERFACE
+-- ==========================================
+if coreGui:FindFirstChild("WinterHubGui") then
+    coreGui.WinterHubGui:Destroy()
+end
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "WinterHubGui"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = coreGui or localPlayer:WaitForChild("PlayerGui")
+
+-- Shared Core Window Frame
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "MainFrame"
+mainFrame.Size = UDim2.new(0, 210, 0, 195)
+mainFrame.Position = UDim2.new(0.05, 0, 0.3, 0)
+mainFrame.BackgroundColor3 = Color3.fromRGB(20, 25, 35)
+mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
+mainFrame.Draggable = true
+mainFrame.Parent = screenGui
+
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0, 8)
+mainCorner.Parent = mainFrame
+
+-- Top UI Window Title Banner
+local bannerLabel = Instance.new("TextLabel")
+bannerLabel.Name = "BannerLabel"
+bannerLabel.Size = UDim2.new(1, 0, 0, 32)
+bannerLabel.BackgroundColor3 = Color3.fromRGB(40, 70, 110)
+bannerLabel.Text = "❄️ Winter Hub v2"
+bannerLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+bannerLabel.Font = Enum.Font.GothamBold
+bannerLabel.TextSize = 13
+bannerLabel.BorderSizePixel = 0
+bannerLabel.Parent = mainFrame
+
+local bannerCorner = Instance.new("UICorner")
+bannerCorner.CornerRadius = UDim.new(0, 8)
+bannerCorner.Parent = bannerLabel
+
+local antiClipFrame = Instance.new("Frame")
+antiClipFrame.Size = UDim2.new(1, 0, 0, 6)
+antiClipFrame.Position = UDim2.new(0, 0, 0, 26)
+antiClipFrame.BackgroundColor3 = Color3.fromRGB(40, 70, 110)
+antiClipFrame.BorderSizePixel = 0
+antiClipFrame.Parent = bannerLabel
+
+-- SECTION 1: Click Teleport Interface Controls
+local tpButton = Instance.new("TextButton")
+tpButton.Name = "TpButton"
+tpButton.Size = UDim2.new(0.86, 0, 0, 32)
+tpButton.Position = UDim2.new(0.07, 0, 0, 45)
+tpButton.BackgroundColor3 = Color3.fromRGB(50, 130, 80)
+tpButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+tpButton.Font = Enum.Font.GothamSemibold
+tpButton.TextSize = 11
+tpButton.Text = "TELEPORT: ENABLED"
+tpButton.BorderSizePixel = 0
+tpButton.Parent = mainFrame
+
+local c1 = Instance.new("UICorner") c1.CornerRadius = UDim.new(0, 6) c1.Parent = tpButton
+
+local tpStatus = Instance.new("TextLabel")
+tpStatus.Size = UDim2.new(1, 0, 0, 15)
+tpStatus.Position = UDim2.new(0, 0, 0, 80)
+tpStatus.BackgroundTransparency = 1
+tpStatus.Text = "Status: Tap Screen to Teleport"
+tpStatus.TextColor3 = Color3.fromRGB(160, 160, 160)
+tpStatus.Font = Enum.Font.Gotham
+tpStatus.TextSize = 10
+tpStatus.Parent = mainFrame
+
+-- SECTION 2: Max AFK Performance Engine Controls
+local fpsButton = Instance.new("TextButton")
+fpsButton.Name = "FpsButton"
+fpsButton.Size = UDim2.new(0.86, 0, 0, 32)
+fpsButton.Position = UDim2.new(0.07, 0, 0, 105)
+fpsButton.BackgroundColor3 = Color3.fromRGB(140, 140, 140)
+fpsButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+fpsButton.Font = Enum.Font.GothamSemibold
+fpsButton.TextSize = 11
+fpsButton.Text = "AFK MODE: DISABLED"
+fpsButton.BorderSizePixel = 0
+fpsButton.Parent = mainFrame
+
+local c2 = Instance.new("UICorner") c2.CornerRadius = UDim.new(0, 6) c2.Parent = fpsButton
+
+local fpsStatus = Instance.new("TextLabel")
+fpsStatus.Size = UDim2.new(1, 0, 0, 15)
+fpsStatus.Position = UDim2.new(0, 0, 0, 140)
+fpsStatus.BackgroundTransparency = 1
+fpsStatus.Text = "Status: Rendering Normal"
+fpsStatus.TextColor3 = Color3.fromRGB(160, 160, 160)
+fpsStatus.Font = Enum.Font.Gotham
+fpsStatus.TextSize = 10
+fpsStatus.Parent = mainFrame
+
+-- Footer Label Disclaimer
+local footerLabel = Instance.new("TextLabel")
+footerLabel.Size = UDim2.new(1, 0, 0, 20)
+footerLabel.Position = UDim2.new(0, 0, 0, 170)
+footerLabel.BackgroundTransparency = 1
+footerLabel.Text = "🔒 Anti-Kick Active via VirtualUser"
+footerLabel.TextColor3 = Color3.fromRGB(100, 150, 200)
+footerLabel.Font = Enum.Font.GothamItalic
+footerLabel.TextSize = 9
+footerLabel.Parent = mainFrame
+
+-- ==========================================
+-- UI INTERACTION TRIGGER WORKFLOWS
+-- ==========================================
+tpButton.MouseButton1Click:Connect(function()
+    teleportEnabled = not teleportEnabled
+    if teleportEnabled then
+        tpButton.Text = "TELEPORT: ENABLED"
+        tpButton.BackgroundColor3 = Color3.fromRGB(50, 130, 80)
+        tpStatus.Text = "Status: Tap Screen to Teleport"
+        tpStatus.TextColor3 = Color3.fromRGB(160, 160, 160)
+    else
+        tpButton.Text = "TELEPORT: DISABLED"
+        tpButton.BackgroundColor3 = Color3.fromRGB(160, 45, 45)
+        tpStatus.Text = "Status: Click TP Deactivated"
+        tpStatus.TextColor3 = Color3.fromRGB(231, 76, 60)
+    end
+end)
+
+fpsButton.MouseButton1Click:Connect(function()
+    afkFpsEnabled = not afkFpsEnabled
+    if afkFpsEnabled then
+        fpsButton.Text = "AFK MODE: ACTIVE"
+        fpsButton.BackgroundColor3 = Color3.fromRGB(45, 95, 160)
+        fpsStatus.Text = "Status: 15 FPS Cap & Screen Frozen"
+        fpsStatus.TextColor3 = Color3.fromRGB(100, 200, 255)
+        
+        runService:Set3dRenderingEnabled(false)
+        setfpscap(15)
+        lighting.GlobalShadows = false
+        settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+        sweepLagObjects()
+        showNotification("Winter Hub", "AFK Optimization Enabled. Screen rendering paused.")
+    else
+        fpsButton.Text = "AFK MODE: DISABLED"
+        fpsButton.BackgroundColor3 = Color3.fromRGB(140, 140, 140)
+        fpsStatus.Text = "Status: Rendering Normal"
+        fpsStatus.TextColor3 = Color3.fromRGB(160, 160, 160)
+        
+        runService:Set3dRenderingEnabled(true)
+        setfpscap(0)
+        lighting.GlobalShadows = originalShadows
+        settings().Rendering.QualityLevel = originalQuality
+        showNotification("Winter Hub", "AFK Optimization Disabled. Restoring full engine defaults.")
+    end
+end)
+
+showNotification("Winter Hub Active", "Combined Engine Controls Loaded Successfully.")
