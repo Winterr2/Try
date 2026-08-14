@@ -1,0 +1,26 @@
+-- FPS Booster: Black Screen & Zero Rendering
+local RunService = game:GetService("RunService")
+local Lighting = game:GetService("Lighting")
+
+-- 1. Disable 3D World Rendering (Saves massive GPU/CPU)
+RunService:Set3dRenderingEnabled(false)
+
+-- 2. Clear Lighting and Visual Effects
+Lighting.GlobalShadows = false
+Lighting.FogEnd = 9e9
+for _, effect in ipairs(Lighting:GetChildren()) do
+    if effect:IsA("PostEffect") or effect:IsA("Sky") then
+        effect:Destroy()
+    end
+end
+
+-- 3. Force Lowest Settings & Clear Textures
+settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+for _, obj in ipairs(workspace:GetDescendants()) do
+    if obj:IsA("Texture") or obj:IsA("Decal") or obj:IsA("ParticleEmitter") or obj:IsA("Trail") then
+        obj:Destroy()
+    elseif obj:IsA("BasePart") then
+        obj.Material = Enum.Material.SmoothPlastic
+        obj.Reflectance = 0
+    end
+end
