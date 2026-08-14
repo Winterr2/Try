@@ -1,11 +1,11 @@
--- FPS Booster: Black Screen & Zero Rendering
+-- Loop-cleaning 
 local RunService = game:GetService("RunService")
 local Lighting = game:GetService("Lighting")
 
--- 1. Disable 3D World Rendering (Saves massive GPU/CPU)
+-- 1. Turn off 3D Rendering (Saves massive GPU/CPU instantly)
 RunService:Set3dRenderingEnabled(false)
 
--- 2. Clear Lighting and Visual Effects
+-- 2. Strip global lighting features 
 Lighting.GlobalShadows = false
 Lighting.FogEnd = 9e9
 for _, effect in ipairs(Lighting:GetChildren()) do
@@ -13,14 +13,25 @@ for _, effect in ipairs(Lighting:GetChildren()) do
         effect:Destroy()
     end
 end
-
--- 3. Force Lowest Settings & Clear Textures
 settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
-for _, obj in ipairs(workspace:GetDescendants()) do
-    if obj:IsA("Texture") or obj:IsA("Decal") or obj:IsA("ParticleEmitter") or obj:IsA("Trail") then
-        obj:Destroy()
-    elseif obj:IsA("BasePart") then
-        obj.Material = Enum.Material.SmoothPlastic
-        obj.Reflectance = 0
+
+-- 3. Loop to constantly delete new lag sources and clear memory
+task.spawn(function()
+    while true do
+        -- Clear new assets spawned by the game (projectiles, effects, textures)
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("Texture") or obj:IsA("Decal") or obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Explosion") then
+                obj:Destroy()
+            elseif obj:IsA("BasePart") and obj.Material ~= Enum.Material.SmoothPlastic then
+                obj.Material = Enum.Material.SmoothPlastic
+                obj.Reflectance = 0
+            end
+        end
+        
+        -- Force Lua Garbage Collection to wipe deleted items from memory
+        gcinfo() 
+        collectgarbage("collect")
+        
+        task.wait(10) -- Repeats every 10 seconds
     end
-end
+end)
