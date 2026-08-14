@@ -1,37 +1,127 @@
--- Loop-cleaning 
+-- Create Winter FPS GUI Elements
+local ScreenGui = Instance.new("ScreenGui")
+local MainFrame = Instance.new("Frame")
+local Banner = Instance.new("TextLabel")
+local ToggleBtn = Instance.new("TextButton")
+local StatusLabel = Instance.new("TextLabel")
+local UICorner = Instance.new("UICorner")
+local UICorner2 = Instance.new("UICorner")
+
+-- Setup GUI Core Properties
+ScreenGui.Name = "WinterFPS_Gui"
+ScreenGui.Parent = game:GetService("CoreGui") or game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+ScreenGui.ResetOnSpawn = false
+
+MainFrame.Name = "MainFrame"
+MainFrame.Parent = ScreenGui
+MainFrame.BackgroundColor3 = Color3.fromRGB(20, 25, 35)
+MainFrame.Position = UDim2.new(0.05, 0, 0.4, 0)
+MainFrame.Size = UDim2.new(0, 200, 0, 130)
+MainFrame.Active = true
+MainFrame.Draggable = true
+UICorner.Parent = MainFrame
+
+-- Banner UI Segment
+Banner.Name = "Banner"
+Banner.Parent = MainFrame
+Banner.BackgroundColor3 = Color3.fromRGB(40, 70, 110)
+Banner.Size = UDim2.new(1, 0, 0, 30)
+Banner.Font = Enum.Font.GothamBold
+Banner.Text = "❄️ Winter FPS"
+Banner.TextColor3 = Color3.fromRGB(255, 255, 255)
+Banner.TextSize = 14
+UICorner2.Parent = Banner
+
+-- Toggle Button UI Segment
+ToggleBtn.Name = "ToggleBtn"
+ToggleBtn.Parent = MainFrame
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(50, 130, 80)
+ToggleBtn.Position = UDim2.new(0.1, 0, 0.35, 0)
+ToggleBtn.Size = UDim2.new(0.8, 0, 0, 35)
+ToggleBtn.Font = Enum.Font.GothamSemibold
+ToggleBtn.Text = "ENABLE AFK MODE"
+ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleBtn.TextSize = 12
+local UICorner3 = Instance.new("UICorner")
+UICorner3.Parent = ToggleBtn
+
+-- Status Text UI Segment
+StatusLabel.Name = "StatusLabel"
+StatusLabel.Parent = MainFrame
+StatusLabel.BackgroundTransparency = 1
+StatusLabel.Position = UDim2.new(0, 0, 0.7, 0)
+StatusLabel.Size = UDim2.new(1, 0, 0, 25)
+StatusLabel.Font = Enum.Font.Gotham
+StatusLabel.Text = "Status: Rendering Normal"
+StatusLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
+StatusLabel.TextSize = 11
+
+-- Core State Logic
+local afkEnabled = false
 local RunService = game:GetService("RunService")
 local Lighting = game:GetService("Lighting")
+local SoundService = game:GetService("SoundService")
 
--- 1. Turn off 3D Rendering (Saves massive GPU/CPU instantly)
-RunService:Set3dRenderingEnabled(false)
+-- Configuration Variables
+local originalQuality = settings().Rendering.QualityLevel
+local originalShadows = Lighting.GlobalShadows
 
--- 2. Strip global lighting features 
-Lighting.GlobalShadows = false
-Lighting.FogEnd = 9e9
-for _, effect in ipairs(Lighting:GetChildren()) do
-    if effect:IsA("PostEffect") or effect:IsA("Sky") then
-        effect:Destroy()
+-- Cleaning Engine Function
+local function sweepLagObjects()
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("Texture") or obj:IsA("Decal") or obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Explosion") or obj:IsA("Shirt") or obj:IsA("Pants") then
+            obj:Destroy()
+        elseif obj:IsA("BasePart") then
+            obj.Material = Enum.Material.SmoothPlastic
+            obj.Reflectance = 0
+            obj.CastShadow = false
+        elseif obj:IsA("MeshPart") then
+            obj.RenderFidelity = Enum.RenderFidelity.Performance
+        end
     end
+    for _, sound in ipairs(SoundService:GetDescendants()) do
+        if sound:IsA("Sound") then sound.Volume = 0 end
+    end
+    gcinfo()
+    collectgarbage("collect")
 end
-settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
 
--- 3. Loop to constantly delete new lag sources and clear memory
+-- Persistent Loop Background Worker
 task.spawn(function()
     while true do
-        -- Clear new assets spawned by the game (projectiles, effects, textures)
-        for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("Texture") or obj:IsA("Decal") or obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Explosion") then
-                obj:Destroy()
-            elseif obj:IsA("BasePart") and obj.Material ~= Enum.Material.SmoothPlastic then
-                obj.Material = Enum.Material.SmoothPlastic
-                obj.Reflectance = 0
-            end
+        if afkEnabled then
+            sweepLagObjects()
         end
+        task.wait(12)
+    end
+end)
+
+-- GUI Interaction Handler
+ToggleBtn.MouseButton1Click:Connect(function()
+    afkEnabled = not afkEnabled
+    
+    if afkEnabled then
+        -- Trigger Low-Fidelity AFK State
+        ToggleBtn.Text = "DISABLE AFK MODE"
+        ToggleBtn.BackgroundColor3 = Color3.fromRGB(160, 45, 45)
+        StatusLabel.Text = "Status: Max Optimization (15 FPS)"
+        StatusLabel.TextColor3 = Color3.fromRGB(100, 200, 255)
         
-        -- Force Lua Garbage Collection to wipe deleted items from memory
-        gcinfo() 
-        collectgarbage("collect")
+        RunService:Set3dRenderingEnabled(false)
+        setfpscap(15) -- Safe performance restriction that won't break server physics data
+        Lighting.GlobalShadows = false
+        settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+        sweepLagObjects()
+    else
+        -- Restore Standard Client Performance State
+        ToggleBtn.Text = "ENABLE AFK MODE"
+        ToggleBtn.BackgroundColor3 = Color3.fromRGB(50, 130, 80)
+        StatusLabel.Text = "Status: Rendering Normal"
+        StatusLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
         
-        task.wait(10) -- Repeats every 10 seconds
+        RunService:Set3dRenderingEnabled(true)
+        setfpscap(0) -- Reverts framing controls back to native application standards
+        Lighting.GlobalShadows = originalShadows
+        settings().Rendering.QualityLevel = originalQuality
     end
 end)
