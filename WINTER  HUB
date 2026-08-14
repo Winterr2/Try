@@ -4,8 +4,8 @@ local runService = game:GetService("RunService")
 local lighting = game:GetService("Lighting")
 local soundService = game:GetService("SoundService")
 local starterGui = game:GetService("StarterGui")
+local coreGui = game:GetService("CoreGui")
 
--- Safely fetch PlayerGui to bypass executor permission errors
 local localPlayer = players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
 local camera = game.Workspace.CurrentCamera
@@ -13,6 +13,15 @@ local camera = game.Workspace.CurrentCamera
 -- Global Feature Toggle States
 local afkFpsEnabled = false
 local teleportEnabled = true
+local isMinimized = false
+local targetMinimizeKey = Enum.KeyCode.RightControl
+
+-- Macro System State Variables
+local macroData = {}
+local isRecording = false
+local isPlaying = false
+local macroStartTime = 0
+local macroLoopThread = nil
 
 -- Save Initial Native Configuration Data
 local originalQuality = settings().Rendering.QualityLevel
@@ -31,22 +40,18 @@ end
 -- ==========================================
 -- DUPLICATE CLEANUP MECHANISM (RUN TWICE FIX)
 -- ==========================================
-if playerGui:FindFirstChild("WinterHubGui") then
-    playerGui.WinterHubGui:Destroy()
-end
+local oldGui = coreGui:FindFirstChild("WinterHubGui") or playerGui:FindFirstChild("WinterHubGui")
+if oldGui then oldGui:Destroy() end
 
--- Track active connections globally so we can disconnect them cleanly
-if _G.WinterHubConnection then
-    _G.WinterHubConnection:Disconnect()
-    _G.WinterHubConnection = nil
-end
+if _G.WinterHubInputConnection then _G.WinterHubInputConnection:Disconnect() end
+if _G.WinterHubKeybindConnection then _G.WinterHubKeybindConnection:Disconnect() end
 
 -- ==========================================
 -- ANTI-AFK IDLE KICK BYPASS MECHANISM
 -- ==========================================
 local virtualUser = game:GetService("VirtualUser")
 localPlayer.Idled:Connect(function()
-    if afkFpsEnabled then
+    if afkFpsEnabled or isPlaying then
         pcall(function()
             virtualUser:Button2Down(Vector2.new(0, 0), camera.CFrame)
             task.wait(1)
@@ -56,10 +61,10 @@ localPlayer.Idled:Connect(function()
 end)
 
 -- ==========================================
--- TELEPORT INTERACTION CODE (FIXED DISABLING)
+-- TELEPORT INTERACTION CODE
 -- ==========================================
 local function teleportPlayerToTouchPosition(touchPosition)
-    if not teleportEnabled then return end
+    if not teleportEnabled or isRecording or isPlaying then return end
 
     if localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart") then
         local ray = camera:ScreenPointToRay(touchPosition.X, touchPosition.Y)
@@ -74,14 +79,6 @@ local function teleportPlayerToTouchPosition(touchPosition)
         end
     end
 end
-
--- Store connection globally to disconnect it when the menu closes or re-executes
-_G.WinterHubConnection = userInputService.InputBegan:Connect(function(input, gameProcessedEvent)
-    if gameProcessedEvent then return end
-    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
-        teleportPlayerToTouchPosition(input.Position)
-    end
-end)
 
 -- ==========================================
 -- ASSET CLEANING PIPELINE LOOP
@@ -107,29 +104,19 @@ local function sweepLagObjects()
     collectgarbage("collect")
 end
 
--- Use a cancellation state check for the loop thread
-task.spawn(function()
-    while playerGui:FindFirstChild("WinterHubGui") do
-        if afkFpsEnabled then
-            sweepLagObjects()
-        end
-        task.wait(12)
-    end
-end)
-
 -- ==========================================
 -- UNIFIED HUB GRAPHICAL INTERFACE
 -- ==========================================
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "WinterHubGui"
 screenGui.ResetOnSpawn = false
-screenGui.Parent = playerGui -- Changed Parent to avoid CoreGui permission errors
+screenGui.Parent = coreGui or playerGui
 
 -- Shared Core Window Frame
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
-mainFrame.Size = UDim2.new(0, 210, 0, 195)
-mainFrame.Position = UDim2.new(0.05, 0, 0.3, 0)
+mainFrame.Size = UDim2.new(0, 210, 0, 310) -- Expanded height to cleanly house macro buttons
+mainFrame.Position = UDim2.new(0.05, 0, 0.25, 0)
 mainFrame.BackgroundColor3 = Color3.fromRGB(20, 25, 35)
 mainFrame.BorderSizePixel = 0
 mainFrame.Active = true
@@ -145,7 +132,7 @@ local bannerLabel = Instance.new("TextLabel")
 bannerLabel.Name = "BannerLabel"
 bannerLabel.Size = UDim2.new(1, 0, 0, 32)
 bannerLabel.BackgroundColor3 = Color3.fromRGB(40, 70, 110)
-bannerLabel.Text = "❄️ Winter Hub v2.2"
+bannerLabel.Text = "❄️ Winter Hub v3.0"
 bannerLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 bannerLabel.Font = Enum.Font.GothamBold
 bannerLabel.TextSize = 13
@@ -163,106 +150,110 @@ antiClipFrame.BackgroundColor3 = Color3.fromRGB(40, 70, 110)
 antiClipFrame.BorderSizePixel = 0
 antiClipFrame.Parent = bannerLabel
 
--- Close Button Trigger [X]
+-- Quick Action Mini-Buttons (Close & Minimize)
 local closeButton = Instance.new("TextButton")
 closeButton.Name = "CloseButton"
-closeButton.Size = UDim2.new(0, 25, 0, 25)
-closeButton.Position = UDim2.new(1, -30, 0, 3)
+closeButton.Size = UDim2.new(0, 20, 0, 20)
+closeButton.Position = UDim2.new(1, -25, 0, 6)
 closeButton.BackgroundTransparency = 1
-closeButton.Text = "X" -- Removed emoji for better platform engine stability
+closeButton.Text = "X"
 closeButton.TextColor3 = Color3.fromRGB(255, 100, 100)
 closeButton.Font = Enum.Font.GothamBold
-closeButton.TextSize = 14
-closeButton.ZIndex = 5
+closeButton.TextSize = 12
 closeButton.Parent = bannerLabel
+
+local miniButton = Instance.new("TextButton")
+miniButton.Name = "MiniButton"
+miniButton.Size = UDim2.new(0, 20, 0, 20)
+miniButton.Position = UDim2.new(1, -45, 0, 4)
+miniButton.BackgroundTransparency = 1
+miniButton.Text = "-"
+miniButton.TextColor3 = Color3.fromRGB(200, 200, 200)
+miniButton.Font = Enum.Font.GothamBold
+miniButton.TextSize = 16
+miniButton.Parent = bannerLabel
+
+-- Content Element Container (For visibility minimizing)
+local contentFrame = Instance.new("Frame")
+contentFrame.Name = "ContentFrame"
+contentFrame.Size = UDim2.new(1, 0, 1, -32)
+contentFrame.Position = UDim2.new(0, 0, 0, 32)
+contentFrame.BackgroundTransparency = 1
+contentFrame.Parent = mainFrame
 
 -- SECTION 1: Click Teleport Interface Controls
 local tpButton = Instance.new("TextButton")
-tpButton.Name = "TpButton"
-tpButton.Size = UDim2.new(0.86, 0, 0, 32)
-tpButton.Position = UDim2.new(0.07, 0, 0, 45)
+tpButton.Size = UDim2.new(0.86, 0, 0, 30)
+tpButton.Position = UDim2.new(0.07, 0, 0, 12)
 tpButton.BackgroundColor3 = Color3.fromRGB(50, 130, 80)
 tpButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 tpButton.Font = Enum.Font.GothamSemibold
 tpButton.TextSize = 11
 tpButton.Text = "TELEPORT: ENABLED"
 tpButton.BorderSizePixel = 0
-tpButton.Parent = mainFrame
-
+tpButton.Parent = contentFrame
 local c1 = Instance.new("UICorner") c1.CornerRadius = UDim.new(0, 6) c1.Parent = tpButton
-
-local tpStatus = Instance.new("TextLabel")
-tpStatus.Size = UDim2.new(1, 0, 0, 15)
-tpStatus.Position = UDim2.new(0, 0, 0, 80)
-tpStatus.BackgroundTransparency = 1
-tpStatus.Text = "Status: Tap Screen to Teleport"
-tpStatus.TextColor3 = Color3.fromRGB(160, 160, 160)
-tpStatus.Font = Enum.Font.Gotham
-tpStatus.TextSize = 10
-tpStatus.Parent = mainFrame
 
 -- SECTION 2: Max AFK Performance Engine Controls
 local fpsButton = Instance.new("TextButton")
-fpsButton.Name = "FpsButton"
-fpsButton.Size = UDim2.new(0.86, 0, 0, 32)
-fpsButton.Position = UDim2.new(0.07, 0, 0, 105)
+fpsButton.Size = UDim2.new(0.86, 0, 0, 30)
+fpsButton.Position = UDim2.new(0.07, 0, 0, 52)
 fpsButton.BackgroundColor3 = Color3.fromRGB(140, 140, 140)
 fpsButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 fpsButton.Font = Enum.Font.GothamSemibold
 fpsButton.TextSize = 11
 fpsButton.Text = "AFK MODE: DISABLED"
 fpsButton.BorderSizePixel = 0
-fpsButton.Parent = mainFrame
-
+fpsButton.Parent = contentFrame
 local c2 = Instance.new("UICorner") c2.CornerRadius = UDim.new(0, 6) c2.Parent = fpsButton
 
-local fpsStatus = Instance.new("TextLabel")
-fpsStatus.Size = UDim2.new(1, 0, 0, 15)
-fpsStatus.Position = UDim2.new(0, 0, 0, 140)
-fpsStatus.BackgroundTransparency = 1
-fpsStatus.Text = "Status: Rendering Normal"
-fpsStatus.TextColor3 = Color3.fromRGB(160, 160, 160)
-fpsStatus.Font = Enum.Font.Gotham
-fpsStatus.TextSize = 10
-fpsStatus.Parent = mainFrame
+-- SECTION 3: Macro Recording System Interfaces
+local recordButton = Instance.new("TextButton")
+recordButton.Size = UDim2.new(0.86, 0, 0, 30)
+recordButton.Position = UDim2.new(0.07, 0, 0, 92)
+recordButton.BackgroundColor3 = Color3.fromRGB(180, 90, 30)
+recordButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+recordButton.Font = Enum.Font.GothamSemibold
+recordButton.TextSize = 11
+recordButton.Text = "🔴 RECORD MACRO"
+recordButton.BorderSizePixel = 0
+recordButton.Parent = contentFrame
+local c3 = Instance.new("UICorner") c3.CornerRadius = UDim.new(0, 6) c3.Parent = recordButton
+
+local playButton = Instance.new("TextButton")
+playButton.Size = UDim2.new(0.86, 0, 0, 30)
+playButton.Position = UDim2.new(0.07, 0, 0, 132)
+playButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+playButton.TextColor3 = Color3.fromRGB(180, 180, 180)
+playButton.Font = Enum.Font.GothamSemibold
+playButton.TextSize = 11
+playButton.Text = "▶ PLAY MACRO (LOOP)"
+playButton.BorderSizePixel = 0
+playButton.Parent = contentFrame
+local c4 = Instance.new("UICorner") c4.CornerRadius = UDim.new(0, 6) c4.Parent = playButton
+
+-- Dynamic Macro Status Monitor Text
+local macroStatus = Instance.new("TextLabel")
+macroStatus.Size = UDim2.new(1, 0, 0, 15)
+macroStatus.Position = UDim2.new(0, 0, 0, 172)
+macroStatus.BackgroundTransparency = 1
+macroStatus.Text = "Macro Storage: Empty"
+macroStatus.TextColor3 = Color3.fromRGB(150, 150, 150)
+macroStatus.Font = Enum.Font.Gotham
+macroStatus.TextSize = 10
+macroStatus.Parent = contentFrame
+
+-- SECTION 4: Settings Config Buttons
+local bindButton = Instance.new("TextButton")
+bindButton.Size = UDim2.new(0.86, 0, 0, 25)
+bindButton.Position = UDim2.new(0.07, 0, 0, 202)
+bindButton.BackgroundColor3 = Color3.fromRGB(35, 45, 60)
+bindButton.TextColor3 = Color3.fromRGB(200, 220, 255)
+bindButton.Font = Enum.Font.Gotham
+bindButton.TextSize = 10
+bindButton.Text = "Minimize Key: RightControl"
+bindButton.BorderSizePixel = 0
+bindButton.Parent = contentFrame
+local c5 = Instance.new("UICorner") c5.CornerRadius = UDim.new(0, 4) c5.Parent = bindButton
 
 -- Footer Label Disclaimer
-local footerLabel = Instance.new("TextLabel")
-footerLabel.Size = UDim2.new(1, 0, 0, 20)
-footerLabel.Position = UDim2.new(0, 0, 0, 170)
-footerLabel.BackgroundTransparency = 1
-footerLabel.Text = "Anti-Kick Active via VirtualUser"
-footerLabel.TextColor3 = Color3.fromRGB(100, 150, 200)
-footerLabel.Font = Enum.Font.GothamItalic
-footerLabel.TextSize = 9
-footerLabel.Parent = mainFrame
-
--- ==========================================
--- UI INTERACTION TRIGGER WORKFLOWS
--- ==========================================
-tpButton.MouseButton1Click:Connect(function()
-    teleportEnabled = not teleportEnabled
-    if teleportEnabled then
-        tpButton.Text = "TELEPORT: ENABLED"
-        tpButton.BackgroundColor3 = Color3.fromRGB(50, 130, 80)
-        tpStatus.Text = "Status: Tap Screen to Teleport"
-        tpStatus.TextColor3 = Color3.fromRGB(160, 160, 160)
-    else
-        tpButton.Text = "TELEPORT: DISABLED"
-        tpButton.BackgroundColor3 = Color3.fromRGB(160, 45, 45)
-        tpStatus.Text = "Status: Click TP Deactivated"
-        tpStatus.TextColor3 = Color3.fromRGB(231, 76, 60)
-    end
-end)
-
-fpsButton.MouseButton1Click:Connect(function()
-    afkFpsEnabled = not afkFpsEnabled
-    if afkFpsEnabled then
-        fpsButton.Text = "AFK MODE: ACTIVE"
-        fpsButton.BackgroundColor3 = Color3.fromRGB(45, 95, 160)
-        fpsStatus.Text = "Status: 15 FPS Cap & Screen Frozen"
-        fpsStatus.TextColor3 = Color3.fromRGB(100, 200, 255)
-        
-        pcall(function()
-            runService:Set3dRenderingEnabled(false)
-            setfpscap(15)
