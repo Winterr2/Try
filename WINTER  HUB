@@ -26,6 +26,19 @@ local function showNotification(title, text)
 end
 
 -- ==========================================
+-- DUPLICATE CLEANUP MECHANISM (RUN TWICE FIX)
+-- ==========================================
+if coreGui:FindFirstChild("WinterHubGui") then
+    coreGui.WinterHubGui:Destroy()
+end
+
+-- Track active connections globally so we can disconnect them cleanly
+if _G.WinterHubConnection then
+    _G.WinterHubConnection:Disconnect()
+    _G.WinterHubConnection = nil
+end
+
+-- ==========================================
 -- ANTI-AFK IDLE KICK BYPASS MECHANISM
 -- ==========================================
 local virtualUser = game:GetService("VirtualUser")
@@ -38,9 +51,10 @@ localPlayer.Idled:Connect(function()
 end)
 
 -- ==========================================
--- TELEPORT INTERACTION CODE
+-- TELEPORT INTERACTION CODE (FIXED DISABLING)
 -- ==========================================
 local function teleportPlayerToTouchPosition(touchPosition)
+    -- Strict check to ensure teleport stops instantly when toggled off
     if not teleportEnabled then return end
 
     if localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart") then
@@ -57,7 +71,8 @@ local function teleportPlayerToTouchPosition(touchPosition)
     end
 end
 
-userInputService.InputBegan:Connect(function(input, gameProcessedEvent)
+-- Store connection globally to disconnect it when the menu closes or re-executes
+_G.WinterHubConnection = userInputService.InputBegan:Connect(function(input, gameProcessedEvent)
     if gameProcessedEvent then return end
     if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
         teleportPlayerToTouchPosition(input.Position)
@@ -86,8 +101,9 @@ local function sweepLagObjects()
     collectgarbage("collect")
 end
 
+-- Use a cancellation state check for the loop thread
 task.spawn(function()
-    while true do
+    while coreGui:FindFirstChild("WinterHubGui") do
         if afkFpsEnabled then
             sweepLagObjects()
         end
@@ -98,10 +114,6 @@ end)
 -- ==========================================
 -- UNIFIED HUB GRAPHICAL INTERFACE
 -- ==========================================
-if coreGui:FindFirstChild("WinterHubGui") then
-    coreGui.WinterHubGui:Destroy()
-end
-
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "WinterHubGui"
 screenGui.ResetOnSpawn = false
@@ -127,7 +139,7 @@ local bannerLabel = Instance.new("TextLabel")
 bannerLabel.Name = "BannerLabel"
 bannerLabel.Size = UDim2.new(1, 0, 0, 32)
 bannerLabel.BackgroundColor3 = Color3.fromRGB(40, 70, 110)
-bannerLabel.Text = "❄️ Winter Hub v2"
+bannerLabel.Text = "❄️ Winter Hub v2.1"
 bannerLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 bannerLabel.Font = Enum.Font.GothamBold
 bannerLabel.TextSize = 13
@@ -144,6 +156,19 @@ antiClipFrame.Position = UDim2.new(0, 0, 0, 26)
 antiClipFrame.BackgroundColor3 = Color3.fromRGB(40, 70, 110)
 antiClipFrame.BorderSizePixel = 0
 antiClipFrame.Parent = bannerLabel
+
+-- NEW: Close Button Trigger [X]
+local closeButton = Instance.new("TextButton")
+closeButton.Name = "CloseButton"
+closeButton.Size = UDim2.new(0, 25, 0, 25)
+closeButton.Position = UDim2.new(1, -30, 0, 3)
+closeButton.BackgroundTransparency = 1
+closeButton.Text = "❌"
+closeButton.TextColor3 = Color3.fromRGB(255, 100, 100)
+closeButton.Font = Enum.Font.GothamBold
+closeButton.TextSize = 12
+closeButton.ZIndex = 5
+closeButton.Parent = bannerLabel
 
 -- SECTION 1: Click Teleport Interface Controls
 local tpButton = Instance.new("TextButton")
@@ -237,19 +262,7 @@ fpsButton.MouseButton1Click:Connect(function()
         lighting.GlobalShadows = false
         settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
         sweepLagObjects()
-        showNotification("Winter Hub", "AFK Optimization Enabled. Screen rendering paused.")
+        showNotification("Winter Hub", "AFK Optimization Enabled.")
     else
         fpsButton.Text = "AFK MODE: DISABLED"
         fpsButton.BackgroundColor3 = Color3.fromRGB(140, 140, 140)
-        fpsStatus.Text = "Status: Rendering Normal"
-        fpsStatus.TextColor3 = Color3.fromRGB(160, 160, 160)
-        
-        runService:Set3dRenderingEnabled(true)
-        setfpscap(0)
-        lighting.GlobalShadows = originalShadows
-        settings().Rendering.QualityLevel = originalQuality
-        showNotification("Winter Hub", "AFK Optimization Disabled. Restoring full engine defaults.")
-    end
-end)
-
-showNotification("Winter Hub Active", "Combined Engine Controls Loaded Successfully.")
