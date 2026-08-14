@@ -4,9 +4,10 @@ local runService = game:GetService("RunService")
 local lighting = game:GetService("Lighting")
 local soundService = game:GetService("SoundService")
 local starterGui = game:GetService("StarterGui")
-local coreGui = game:GetService("CoreGui")
 
+-- Safely fetch PlayerGui to bypass executor permission errors
 local localPlayer = players.LocalPlayer
+local playerGui = localPlayer:WaitForChild("PlayerGui")
 local camera = game.Workspace.CurrentCamera
 
 -- Global Feature Toggle States
@@ -18,18 +19,20 @@ local originalQuality = settings().Rendering.QualityLevel
 local originalShadows = lighting.GlobalShadows
 
 local function showNotification(title, text)
-    starterGui:SetCore("SendNotification", {
-        Title = title,
-        Text = text,
-        Duration = 4
-    })
+    pcall(function()
+        starterGui:SetCore("SendNotification", {
+            Title = title,
+            Text = text,
+            Duration = 4
+        })
+    end)
 end
 
 -- ==========================================
 -- DUPLICATE CLEANUP MECHANISM (RUN TWICE FIX)
 -- ==========================================
-if coreGui:FindFirstChild("WinterHubGui") then
-    coreGui.WinterHubGui:Destroy()
+if playerGui:FindFirstChild("WinterHubGui") then
+    playerGui.WinterHubGui:Destroy()
 end
 
 -- Track active connections globally so we can disconnect them cleanly
@@ -44,9 +47,11 @@ end
 local virtualUser = game:GetService("VirtualUser")
 localPlayer.Idled:Connect(function()
     if afkFpsEnabled then
-        virtualUser:Button2Down(Vector2.new(0, 0), camera.CFrame)
-        task.wait(1)
-        virtualUser:Button2Up(Vector2.new(0, 0), camera.CFrame)
+        pcall(function()
+            virtualUser:Button2Down(Vector2.new(0, 0), camera.CFrame)
+            task.wait(1)
+            virtualUser:Button2Up(Vector2.new(0, 0), camera.CFrame)
+        end)
     end
 end)
 
@@ -54,7 +59,6 @@ end)
 -- TELEPORT INTERACTION CODE (FIXED DISABLING)
 -- ==========================================
 local function teleportPlayerToTouchPosition(touchPosition)
-    -- Strict check to ensure teleport stops instantly when toggled off
     if not teleportEnabled then return end
 
     if localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart") then
@@ -85,17 +89,19 @@ end)
 local function sweepLagObjects()
     for _, obj in ipairs(workspace:GetDescendants()) do
         if obj:IsA("Texture") or obj:IsA("Decal") or obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Explosion") or obj:IsA("Shirt") or obj:IsA("Pants") then
-            obj:Destroy()
+            pcall(function() obj:Destroy() end)
         elseif obj:IsA("BasePart") then
-            obj.Material = Enum.Material.SmoothPlastic
-            obj.Reflectance = 0
-            obj.CastShadow = false
+            pcall(function()
+                obj.Material = Enum.Material.SmoothPlastic
+                obj.Reflectance = 0
+                obj.CastShadow = false
+            end)
         elseif obj:IsA("MeshPart") then
-            obj.RenderFidelity = Enum.RenderFidelity.Performance
+            pcall(function() obj.RenderFidelity = Enum.RenderFidelity.Performance end)
         end
     end
     for _, sound in ipairs(soundService:GetDescendants()) do
-        if sound:IsA("Sound") then sound.Volume = 0 end
+        if sound:IsA("Sound") then pcall(function() sound.Volume = 0 end) end
     end
     gcinfo()
     collectgarbage("collect")
@@ -103,7 +109,7 @@ end
 
 -- Use a cancellation state check for the loop thread
 task.spawn(function()
-    while coreGui:FindFirstChild("WinterHubGui") do
+    while playerGui:FindFirstChild("WinterHubGui") do
         if afkFpsEnabled then
             sweepLagObjects()
         end
@@ -117,7 +123,7 @@ end)
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "WinterHubGui"
 screenGui.ResetOnSpawn = false
-screenGui.Parent = coreGui or localPlayer:WaitForChild("PlayerGui")
+screenGui.Parent = playerGui -- Changed Parent to avoid CoreGui permission errors
 
 -- Shared Core Window Frame
 local mainFrame = Instance.new("Frame")
@@ -139,7 +145,7 @@ local bannerLabel = Instance.new("TextLabel")
 bannerLabel.Name = "BannerLabel"
 bannerLabel.Size = UDim2.new(1, 0, 0, 32)
 bannerLabel.BackgroundColor3 = Color3.fromRGB(40, 70, 110)
-bannerLabel.Text = "❄️ Winter Hub v2.1"
+bannerLabel.Text = "❄️ Winter Hub v2.2"
 bannerLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 bannerLabel.Font = Enum.Font.GothamBold
 bannerLabel.TextSize = 13
@@ -157,16 +163,16 @@ antiClipFrame.BackgroundColor3 = Color3.fromRGB(40, 70, 110)
 antiClipFrame.BorderSizePixel = 0
 antiClipFrame.Parent = bannerLabel
 
--- NEW: Close Button Trigger [X]
+-- Close Button Trigger [X]
 local closeButton = Instance.new("TextButton")
 closeButton.Name = "CloseButton"
 closeButton.Size = UDim2.new(0, 25, 0, 25)
 closeButton.Position = UDim2.new(1, -30, 0, 3)
 closeButton.BackgroundTransparency = 1
-closeButton.Text = "❌"
+closeButton.Text = "X" -- Removed emoji for better platform engine stability
 closeButton.TextColor3 = Color3.fromRGB(255, 100, 100)
 closeButton.Font = Enum.Font.GothamBold
-closeButton.TextSize = 12
+closeButton.TextSize = 14
 closeButton.ZIndex = 5
 closeButton.Parent = bannerLabel
 
@@ -225,7 +231,7 @@ local footerLabel = Instance.new("TextLabel")
 footerLabel.Size = UDim2.new(1, 0, 0, 20)
 footerLabel.Position = UDim2.new(0, 0, 0, 170)
 footerLabel.BackgroundTransparency = 1
-footerLabel.Text = "🔒 Anti-Kick Active via VirtualUser"
+footerLabel.Text = "Anti-Kick Active via VirtualUser"
 footerLabel.TextColor3 = Color3.fromRGB(100, 150, 200)
 footerLabel.Font = Enum.Font.GothamItalic
 footerLabel.TextSize = 9
@@ -257,12 +263,6 @@ fpsButton.MouseButton1Click:Connect(function()
         fpsStatus.Text = "Status: 15 FPS Cap & Screen Frozen"
         fpsStatus.TextColor3 = Color3.fromRGB(100, 200, 255)
         
-        runService:Set3dRenderingEnabled(false)
-        setfpscap(15)
-        lighting.GlobalShadows = false
-        settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
-        sweepLagObjects()
-        showNotification("Winter Hub", "AFK Optimization Enabled.")
-    else
-        fpsButton.Text = "AFK MODE: DISABLED"
-        fpsButton.BackgroundColor3 = Color3.fromRGB(140, 140, 140)
+        pcall(function()
+            runService:Set3dRenderingEnabled(false)
+            setfpscap(15)
