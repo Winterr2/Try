@@ -121,6 +121,65 @@ if oldGui then
 end
 
 --==================================================
+-- M1 AUTO / RAPID ATTACK
+--==================================================
+
+local m1AutoEnabled = false
+local m1RapidEnabled = false
+
+local NORMAL_DELAY = 0.15
+local RAPID_DELAY = 0.03
+
+local function performM1()
+    -- Put your game's legitimate primary-attack
+    -- function here.
+    --
+    -- Example for a Tool:
+    local character = player.Character
+    if not character then
+        return
+    end
+
+    local tool = character:FindFirstChildOfClass("Tool")
+
+    if tool then
+        tool:Activate()
+    end
+end
+
+-- NORMAL AUTO ATTACK
+task.spawn(function()
+
+    while true do
+
+        if m1AutoEnabled and not m1RapidEnabled then
+            performM1()
+            task.wait(NORMAL_DELAY)
+        else
+            task.wait(0.05)
+        end
+
+    end
+
+end)
+
+-- RAPID AUTO ATTACK
+task.spawn(function()
+
+    while true do
+
+        if m1RapidEnabled then
+            performM1()
+            task.wait(RAPID_DELAY)
+        else
+            task.wait(0.05)
+        end
+
+    end
+
+end)
+
+--==================================================
 -- TELEPORT
 --==================================================
 
